@@ -7,8 +7,12 @@ export interface ExportProfileSpan {
   fields: ExportProfileFields
 }
 
+function runtimeProcess(): NodeJS.Process | undefined {
+  return Reflect.get(globalThis, 'process') as NodeJS.Process | undefined
+}
+
 function profileEnabled(): boolean {
-  return typeof process !== 'undefined' && process.env.OPENPENCIL_EXPORT_PROFILE === '1'
+  return runtimeProcess()?.env.OPENPENCIL_EXPORT_PROFILE === '1'
 }
 
 function now(): number {
@@ -16,12 +20,14 @@ function now(): number {
 }
 
 function residentMemoryMb(): number | undefined {
-  if (typeof process === 'undefined' || typeof process.memoryUsage !== 'function') return undefined
+  const process = runtimeProcess()
+  if (!process || typeof process.memoryUsage !== 'function') return undefined
   return Math.round(process.memoryUsage().rss / 1024 / 1024)
 }
 
 function writeProfileEvent(event: Record<string, ExportProfileField | undefined>): void {
-  if (typeof process === 'undefined' || typeof process.stderr?.write !== 'function') return
+  const process = runtimeProcess()
+  if (!process || typeof process.stderr.write !== 'function') return
   process.stderr.write(`${JSON.stringify(event)}\n`)
 }
 

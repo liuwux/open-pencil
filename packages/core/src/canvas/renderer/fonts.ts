@@ -44,6 +44,8 @@ export interface ExportTextMeasurementCache {
   stats: () => ExportTextMeasurementStats
 }
 
+type TextMeasurement = Exclude<ReturnType<TextMeasurer>, null>
+
 function textMeasurementCacheKey(nodeId: string, maxWidth?: number): string {
   const widthKey = maxWidth === undefined ? 'unconstrained' : Math.round(maxWidth)
   return `${nodeId}:${widthKey}`
@@ -78,6 +80,18 @@ export function createExportTextMeasurementCache(
       text_measure_cache_misses: misses
     })
   }
+}
+
+export function importedFigTextMeasurement(node: SceneNode): TextMeasurement | undefined {
+  const importedLayout = node.figmaDerivedLayout
+  if (
+    node.source.format !== 'fig' ||
+    importedLayout?.width === undefined ||
+    importedLayout.height === undefined
+  ) {
+    return undefined
+  }
+  return { width: importedLayout.width, height: importedLayout.height }
 }
 
 export function isTextPictureCurrent(r: TextPictureGenerationState, node: SceneNode): boolean {
@@ -166,9 +180,15 @@ export async function prepareForExport(
   const { getTextMeasurer, setTextMeasurer, computeAllLayouts } = await import('#core/layout')
 
   const previousTextMeasurer = getTextMeasurer()
-  const textMeasurementCache = createExportTextMeasurementCache((node, maxWidth) =>
-    r.measureTextNode(node, maxWidth)
-  )
+  let importedGeometryReuses = 0
+  const textMeasurementCache = createExportTextMeasurementCache((node, maxWidth) => {
+    const importedMeasurement = importedFigTextMeasurement(node)
+    if (importedMeasurement) {
+      importedGeometryReuses += 1
+      return importedMeasurement
+    }
+    return r.measureTextNode(node, maxWidth)
+  })
   setTextMeasurer(textMeasurementCache.measure)
 
   const fontScanSpan = startExportProfile('font_scan', { nodes: nodeIds.length })
@@ -195,6 +215,7 @@ export async function prepareForExport(
   finishExportProfile(layoutSpan, {
     nodes: graph.nodes.size,
     stage: 'export_prepare',
+    imported_geometry_reuses: importedGeometryReuses,
     ...textMeasurementCache.stats()
   })
   textMeasurementCache.clear()

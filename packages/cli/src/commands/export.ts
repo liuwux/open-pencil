@@ -27,6 +27,7 @@ import {
   populateDocumentPage,
   populateWholeDocument
 } from '#cli/headless'
+import { configureOfflineFonts } from '#cli/system-fonts'
 
 const io = new IORegistry(BUILTIN_IO_FORMATS)
 const RASTER_FORMATS = ['PNG', 'JPG', 'WEBP']
@@ -52,6 +53,7 @@ interface ExportArgs {
   css: string
   assets: string
   fonts: string
+  offline?: boolean
   thumbnail?: boolean
   width: string
   height: string
@@ -270,6 +272,7 @@ async function executeFileExport(
 }
 
 async function exportFromFile(format: string, args: ExportArgs) {
+  if (args.offline) configureOfflineFonts()
   const file = requireFile(args.file)
   const graph = await loadDocument(file)
   const defaultName = basename(file, extname(file))
@@ -403,6 +406,10 @@ export default defineCommand({
       type: 'string',
       description: 'HTML font output: assets or none (default: none)',
       default: 'none'
+    },
+    offline: {
+      type: 'boolean',
+      description: 'Disable online font providers and use available system or bundled fonts'
     },
     thumbnail: { type: 'boolean', description: 'Export page thumbnail instead of full render' },
     width: { type: 'string', description: 'Thumbnail width (default: 1920)', default: '1920' },

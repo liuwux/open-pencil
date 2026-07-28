@@ -4,7 +4,8 @@
 
 ### Fixed
 
-- Reuse text measurements across repeated Auto Layout work during headless export preparation.
+- Let headless exports disable slow web-font lookups and use Linux system-font fallbacks.
+- Reuse text measurements and preserve imported `.fig` text geometry during headless export preparation.
 - Export SVGs with large embedded image fills without overflowing the JavaScript call stack.
 - Resolve headless CanvasKit assets correctly when OpenPencil is installed under a Unicode path.
 - Match regional browser languages to supported locales without selecting a secondary language. (#417)

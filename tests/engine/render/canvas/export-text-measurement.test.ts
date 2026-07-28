@@ -2,7 +2,10 @@ import { describe, expect, test } from 'bun:test'
 
 import { SceneGraph } from '@open-pencil/scene-graph'
 
-import { createExportTextMeasurementCache } from '#core/canvas/renderer/fonts'
+import {
+  createExportTextMeasurementCache,
+  importedFigTextMeasurement
+} from '#core/canvas/renderer/fonts'
 
 describe('export text measurement cache', () => {
   test('reuses a node measurement for the same rounded width constraint', () => {
@@ -42,5 +45,19 @@ describe('export text measurement cache', () => {
     cache.clear()
     expect(cache.measure(text, 120)).toBeNull()
     expect(measurements).toBe(2)
+  })
+
+  test('uses stored geometry for imported fig text', () => {
+    const graph = new SceneGraph()
+    const page = graph.getPages()[0]
+    const text = graph.createNode('TEXT', page.id, { text: 'imported' })
+
+    expect(importedFigTextMeasurement(text)).toBeUndefined()
+    graph.updateNode(text.id, {
+      figmaDerivedLayout: { width: 35, height: 17 },
+      source: { ...text.source, format: 'fig' }
+    })
+
+    expect(importedFigTextMeasurement(text)).toEqual({ width: 35, height: 17 })
   })
 })
