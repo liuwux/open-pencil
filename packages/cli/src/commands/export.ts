@@ -32,7 +32,7 @@ import { assertLocalFonts, configureHeadlessFonts } from '#cli/system-fonts'
 const io = new IORegistry(BUILTIN_IO_FORMATS)
 const RASTER_FORMATS = ['PNG', 'JPG', 'WEBP']
 const LOCAL_FONT_FORMATS = new Set([...RASTER_FORMATS, 'PDF'])
-const ALL_FORMATS = new Set([...RASTER_FORMATS, 'SVG', 'PDF', 'JSX', 'FIG', 'HTML'])
+const ALL_FORMATS = new Set([...RASTER_FORMATS, 'SVG', 'PDF', 'PPTX', 'JSX', 'FIG', 'HTML'])
 const JSX_STYLES = new Set(['openpencil', 'tailwind'])
 const HTML_STYLES = new Set(['inline', 'tailwind'])
 const HTML_MODES = new Set(['fragment', 'standalone'])
@@ -100,7 +100,7 @@ async function exportViaApp(format: string, args: ExportArgs) {
     return
   }
 
-  if (format === 'JSX' || format === 'HTML' || format === 'FIG') {
+  if (format === 'JSX' || format === 'HTML' || format === 'FIG' || format === 'PPTX') {
     printError(`${format} export is only available in file mode right now.`)
     process.exit(1)
   }
@@ -187,7 +187,7 @@ function prepareGraphForExport(
   format: string,
   args: ExportArgs
 ): boolean {
-  const wholeDocument = format === 'FIG' && !args.page && !args.node
+  const wholeDocument = (format === 'FIG' || format === 'PPTX') && !args.page && !args.node
   if (wholeDocument) populateWholeDocument(graph)
   else if (args.node) populateDocumentNodes(graph, [args.node], args.page)
   else populateDocumentPage(graph, pageId)
@@ -278,7 +278,10 @@ async function executeFileExport(
     | undefined,
   wholeDocument: boolean
 ) {
-  if (wholeDocument) return io.writeDocument(formatId, graph, options)
+  if (wholeDocument) {
+    if (formatId === 'fig') return io.writeDocument(formatId, graph, options)
+    return io.exportContent(formatId, { graph, target: { scope: 'document' } }, options)
+  }
   return io.exportContent(formatId, { graph, target }, options)
 }
 
@@ -349,7 +352,7 @@ async function exportFromFile(format: string, args: ExportArgs) {
 }
 
 export default defineCommand({
-  meta: { description: 'Export a document to PNG, JPG, WEBP, SVG, PDF, JSX, HTML, or .fig' },
+  meta: { description: 'Export a document to PNG, JPG, WEBP, SVG, PDF, PPTX, JSX, HTML, or .fig' },
   args: {
     file: {
       type: 'positional',
@@ -365,7 +368,7 @@ export default defineCommand({
     format: {
       type: 'string',
       alias: 'f',
-      description: 'Export format: png, jpg, webp, svg, pdf, jsx, html, fig (default: png)',
+      description: 'Export format: png, jpg, webp, svg, pdf, pptx, jsx, html, fig (default: png)',
       default: 'png'
     },
     scale: { type: 'string', alias: 's', description: 'Export scale (default: 1)', default: '1' },
@@ -429,7 +432,7 @@ export default defineCommand({
     const format = args.format.toUpperCase() as RasterExportFormat | 'SVG' | 'JSX' | 'FIG' | 'HTML'
     if (!ALL_FORMATS.has(format)) {
       printError(
-        `Invalid format "${args.format}". Use png, jpg, webp, svg, pdf, jsx, html, or fig.`
+        `Invalid format "${args.format}". Use png, jpg, webp, svg, pdf, pptx, jsx, html, or fig.`
       )
       process.exit(1)
     }
