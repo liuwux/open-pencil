@@ -1,3 +1,5 @@
+import { fileURLToPath } from 'node:url'
+
 import type { CanvasKit } from 'canvaskit-wasm'
 
 import type { SceneGraph } from '@open-pencil/scene-graph'
@@ -13,7 +15,7 @@ export async function initCanvasKit(): Promise<CanvasKit> {
   if (cachedCk) return cachedCk
   const CanvasKitInit = (await import('canvaskit-wasm/full')).default
   const ckPath = import.meta.resolve('canvaskit-wasm/full')
-  const binDir = new URL('.', ckPath).pathname
+  const binDir = fileURLToPath(new URL('.', ckPath))
   cachedCk = await CanvasKitInit({ locateFile: (file: string) => binDir + file })
   return cachedCk
 }
