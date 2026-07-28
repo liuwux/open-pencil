@@ -210,6 +210,23 @@ For other MCP clients:
 openpencil-mcp-http   # Unix socket on macOS/Linux + http://127.0.0.1:7600/mcp
 ```
 
+**Read-only file session** (no desktop app):
+
+```json
+{
+  "mcpServers": {
+    "open-pencil-readonly": {
+      "command": "openpencil-mcp-headless",
+      "args": ["/path/to/design.fig"]
+    }
+  }
+}
+```
+
+The fixed input file is decoded lazily on the first tool call and its SceneGraph is reused for
+the lifetime of the MCP process. This entry point exposes inspection tools only and never writes
+the source file.
+
 Local clients discover the private Unix socket automatically and fall back to localhost TCP. Set `PORT=0` to disable TCP on macOS/Linux.
 
 **File access:** Set `OPENPENCIL_MCP_ROOT` to scope file operations (`open_file`, `new_document`, export `path` param) to a directory. Defaults to the current working directory.

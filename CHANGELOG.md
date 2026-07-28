@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Add a read-only headless MCP entry point that decodes one local design file once and reuses its SceneGraph across tool calls.
+
 ### Fixed
 
 - Make file-based CLI exports fail fast when an exact local font is unavailable instead of querying web providers or silently substituting another family.
