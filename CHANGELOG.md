@@ -6,8 +6,9 @@
 
 - Export SVGs with large embedded image fills without overflowing the JavaScript call stack.
 - Resolve headless CanvasKit assets correctly when OpenPencil is installed under a Unicode path.
+- Match regional browser languages to supported locales without selecting a secondary language. (#417)
 - Save auto-layout frames that stretch their children to `.fig` without failing. (#427)
-- Reduce large `.fig` page-switch work to the active page and coalesce Layers tree rebuilds. (#420)
+- Reduce large `.fig` page-switch work to the active page, reuse fixed-point propagation indexes, and coalesce Layers tree rebuilds. (#420)
 - Center text glyphs within explicit line-height leading in CanvasKit paragraph rendering.
 
 ### Added
