@@ -4,7 +4,7 @@
 
 ### Fixed
 
-- Let headless exports disable slow web-font lookups and use Linux system-font fallbacks.
+- Make file-based CLI exports fail fast when an exact local font is unavailable instead of querying web providers or silently substituting another family.
 - Reuse text measurements and preserve imported `.fig` text geometry during headless export preparation.
 - Export SVGs with large embedded image fills without overflowing the JavaScript call stack.
 - Resolve headless CanvasKit assets correctly when OpenPencil is installed under a Unicode path.

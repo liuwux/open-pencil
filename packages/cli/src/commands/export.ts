@@ -27,10 +27,11 @@ import {
   populateDocumentPage,
   populateWholeDocument
 } from '#cli/headless'
-import { configureOfflineFonts } from '#cli/system-fonts'
+import { assertLocalFonts, configureHeadlessFonts } from '#cli/system-fonts'
 
 const io = new IORegistry(BUILTIN_IO_FORMATS)
 const RASTER_FORMATS = ['PNG', 'JPG', 'WEBP']
+const LOCAL_FONT_FORMATS = new Set([...RASTER_FORMATS, 'PDF'])
 const ALL_FORMATS = new Set([...RASTER_FORMATS, 'SVG', 'PDF', 'JSX', 'FIG', 'HTML'])
 const JSX_STYLES = new Set(['openpencil', 'tailwind'])
 const HTML_STYLES = new Set(['inline', 'tailwind'])
@@ -53,7 +54,6 @@ interface ExportArgs {
   css: string
   assets: string
   fonts: string
-  offline?: boolean
   thumbnail?: boolean
   width: string
   height: string
@@ -127,6 +127,16 @@ function targetLabel(pageName?: string, nodeId?: string, wholeDocument = false):
 }
 
 type FileExportTarget = { scope: 'node'; nodeId: string } | { scope: 'page'; pageId: string }
+
+async function assertTargetLocalFonts(
+  format: string,
+  graph: Awaited<ReturnType<typeof loadDocument>>,
+  target: FileExportTarget
+): Promise<void> {
+  if (!LOCAL_FONT_FORMATS.has(format)) return
+  const targetId = target.scope === 'node' ? target.nodeId : target.pageId
+  await assertLocalFonts(graph, [targetId])
+}
 
 async function writeHTMLFiles(
   output: string,
@@ -209,6 +219,7 @@ async function exportRasterNodeBatch(
   if (nodeIds.length === 0) throw new Error('--nodes must contain at least one node ID')
 
   const nodesByPage = populateDocumentNodes(graph, nodeIds, args.page)
+  await assertLocalFonts(graph, nodeIds)
   const outputDir = resolve(args['output-dir'] ?? `${defaultName}-nodes`)
   await mkdir(outputDir, { recursive: true })
   const extension = format === 'JPG' ? 'jpg' : format.toLowerCase()
@@ -272,7 +283,7 @@ async function executeFileExport(
 }
 
 async function exportFromFile(format: string, args: ExportArgs) {
-  if (args.offline) configureOfflineFonts()
+  configureHeadlessFonts()
   const file = requireFile(args.file)
   const graph = await loadDocument(file)
   const defaultName = basename(file, extname(file))
@@ -295,6 +306,8 @@ async function exportFromFile(format: string, args: ExportArgs) {
   const target = args.node
     ? { scope: 'node' as const, nodeId: args.node }
     : { scope: 'page' as const, pageId: page.id }
+
+  await assertTargetLocalFonts(format, graph, target)
 
   if (args.thumbnail) {
     printError('Thumbnail export is not supported by the shared file export path yet.')
@@ -406,10 +419,6 @@ export default defineCommand({
       type: 'string',
       description: 'HTML font output: assets or none (default: none)',
       default: 'none'
-    },
-    offline: {
-      type: 'boolean',
-      description: 'Disable online font providers and use available system or bundled fonts'
     },
     thumbnail: { type: 'boolean', description: 'Export page thumbnail instead of full render' },
     width: { type: 'string', description: 'Thumbnail width (default: 1920)', default: '1920' },
