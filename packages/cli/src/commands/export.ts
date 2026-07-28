@@ -4,7 +4,13 @@ import { basename, dirname, extname, join, resolve } from 'node:path'
 import { defineCommand } from 'citty'
 
 import { decodeBase64 } from '@open-pencil/core/bytes'
-import { BUILTIN_IO_FORMATS, headlessRenderNodeBatches, IORegistry } from '@open-pencil/core/io'
+import {
+  BUILTIN_IO_FORMATS,
+  finishExportProfile,
+  headlessRenderNodeBatches,
+  IORegistry,
+  startExportProfile
+} from '@open-pencil/core/io'
 import type { RasterExportFormat } from '@open-pencil/core/io'
 import {
   exportHTMLBundle,
@@ -54,7 +60,9 @@ interface ExportArgs {
 }
 
 async function writeAndLog(path: string, content: string | Uint8Array) {
+  const span = startExportProfile('file_write', { bytes: content.length })
   await writeFile(path, content)
+  finishExportProfile(span, { bytes: content.length })
   const size = typeof content === 'string' ? content.length : content.length
   console.log(ok(`Exported ${path} (${(size / 1024).toFixed(1)} KB)`))
 }

@@ -1,6 +1,12 @@
 import { readFile } from 'node:fs/promises'
 
-import { BUILTIN_IO_FORMATS, IORegistry, initCanvasKit } from '@open-pencil/core/io'
+import {
+  BUILTIN_IO_FORMATS,
+  finishExportProfile,
+  IORegistry,
+  initCanvasKit,
+  startExportProfile
+} from '@open-pencil/core/io'
 import { populateAllLazyFigImportRoots, populateLazyFigImportRoots } from '@open-pencil/core/kiwi'
 import { computeAllLayouts } from '@open-pencil/core/layout'
 import type { SceneGraph } from '@open-pencil/scene-graph'
@@ -10,21 +16,41 @@ export { initCanvasKit }
 const io = new IORegistry(BUILTIN_IO_FORMATS)
 
 export async function loadDocument(filePath: string): Promise<SceneGraph> {
+  const readSpan = startExportProfile('file_read')
   const bytes = new Uint8Array(await readFile(filePath))
+  finishExportProfile(readSpan, { bytes: bytes.byteLength })
+
+  const decodeSpan = startExportProfile('fig_decode', { bytes: bytes.byteLength })
   const { graph } = await io.readDocument({ name: filePath, data: bytes })
+  finishExportProfile(decodeSpan, { nodes: graph.nodes.size })
+
+  const layoutSpan = startExportProfile('layout', { stage: 'initial_document' })
   computeAllLayouts(graph)
+  finishExportProfile(layoutSpan, { nodes: graph.nodes.size, stage: 'initial_document' })
   return graph
 }
 
 export function populateDocumentPage(graph: SceneGraph, pageId: string): boolean {
+  const populationSpan = startExportProfile('lazy_population', { scope: 'page' })
   const changed = populateLazyFigImportRoots(graph, [pageId])
-  if (changed) computeAllLayouts(graph, pageId)
+  finishExportProfile(populationSpan, { changed, nodes: graph.nodes.size, scope: 'page' })
+  if (changed) {
+    const layoutSpan = startExportProfile('layout', { stage: 'populated_page' })
+    computeAllLayouts(graph, pageId)
+    finishExportProfile(layoutSpan, { nodes: graph.nodes.size, stage: 'populated_page' })
+  }
   return changed
 }
 
 export function populateWholeDocument(graph: SceneGraph): boolean {
+  const populationSpan = startExportProfile('lazy_population', { scope: 'document' })
   const changed = populateAllLazyFigImportRoots(graph)
-  if (changed) computeAllLayouts(graph)
+  finishExportProfile(populationSpan, { changed, nodes: graph.nodes.size, scope: 'document' })
+  if (changed) {
+    const layoutSpan = startExportProfile('layout', { stage: 'populated_document' })
+    computeAllLayouts(graph)
+    finishExportProfile(layoutSpan, { nodes: graph.nodes.size, stage: 'populated_document' })
+  }
   return changed
 }
 

@@ -5,6 +5,7 @@ import { computeDescendantVisualBounds } from '@open-pencil/scene-graph/geometry
 
 import type { SkiaRenderer } from '#core/canvas'
 import type { RenderColorSpace } from '#core/color/management'
+import { finishExportProfile, startExportProfile } from '#core/io/export-profile'
 import { extractExportGraph, findPageId } from '#core/io/subgraph'
 
 export type RasterExportFormat = 'PNG' | 'JPG' | 'WEBP'
@@ -98,6 +99,22 @@ function shouldTrimAlphaBounds(
   )
 }
 
+function profiledImageSize(
+  alphaBounds: ReturnType<typeof findAlphaBounds>,
+  width: number,
+  height: number
+): { width: number; height: number } {
+  if (!alphaBounds) return { width, height }
+  return {
+    width: alphaBounds.maxX - alphaBounds.minX,
+    height: alphaBounds.maxY - alphaBounds.minY
+  }
+}
+
+function profiledByteLength(bytes: Uint8Array | null): number {
+  return bytes ? bytes.byteLength : 0
+}
+
 function renderToSurface(
   ck: CanvasKit,
   renderer: SkiaRenderer,
@@ -113,6 +130,12 @@ function renderToSurface(
   const renderScale = 2
   const renderWidth = width * renderScale
   const renderHeight = height * renderScale
+  const renderSpan = startExportProfile('render', {
+    format,
+    height,
+    render_scale: renderScale,
+    width
+  })
   const pixels = ck.Malloc(Uint8Array, renderWidth * renderHeight * 4)
   const surface = ck.MakeRasterDirectSurface(
     {
@@ -136,7 +159,9 @@ function renderToSurface(
     setup(canvas)
     renderer.renderSceneToCanvas(canvas, renderGraph, pageId)
     surface.flush()
+    finishExportProfile(renderSpan, { nodes: renderGraph.nodes.size })
 
+    const downsampleSpan = startExportProfile('downsample', { height, width })
     const highResImage = surface.makeImageSnapshot()
     const downsamplePixels = ck.Malloc(Uint8Array, width * height * 4)
     const downsampleSurface = ck.MakeRasterDirectSurface(
@@ -183,6 +208,9 @@ function renderToSurface(
           alphaBounds.maxY
         ])
       : downsampleSurface.makeImageSnapshot()
+    finishExportProfile(downsampleSpan, profiledImageSize(alphaBounds, width, height))
+
+    const encodeSpan = startExportProfile('png_encode', { format })
     const encoded = image.encodeToBytes(ckImageFormat(ck, format), quality)
     let resultBytes: Uint8Array | null = encoded ? new Uint8Array(encoded) : null
 
@@ -212,6 +240,7 @@ function renderToSurface(
         )
       }
     }
+    finishExportProfile(encodeSpan, { bytes: profiledByteLength(resultBytes), format })
 
     image.delete()
     downsampleSurface.delete()
@@ -256,7 +285,9 @@ export function renderNodesToImage(
     throw new Error('Raster export selection must stay on a single page')
   }
 
+  const boundsSpan = startExportProfile('bounds', { nodes: nodeIds.length })
   const bounds = computeContentBounds(graph, nodeIds)
+  finishExportProfile(boundsSpan, { found: bounds !== null, nodes: nodeIds.length })
   if (!bounds) return null
 
   const contentW = bounds.maxX - bounds.minX
@@ -267,12 +298,15 @@ export function renderNodesToImage(
   const pixelH = Math.ceil(contentH * options.scale)
   if (pixelW <= 0 || pixelH <= 0) return null
 
+  const extractSpan = startExportProfile('subgraph_extract', { roots: nodeIds.length })
   const extracted = extractExportGraph(graph, { scope: 'selection', nodeIds })
+  finishExportProfile(extractSpan, { nodes: extracted.graph.nodes.size, roots: nodeIds.length })
   if (!extracted.pageId) return null
 
-  const renderGraph = nodeIds.some((nodeId) => nodeNeedsSceneBackdrop(graph, nodeId))
-    ? graph
-    : extracted.graph
+  const backdropSpan = startExportProfile('backdrop_scan', { roots: nodeIds.length })
+  const needsSceneBackdrop = nodeIds.some((nodeId) => nodeNeedsSceneBackdrop(graph, nodeId))
+  finishExportProfile(backdropSpan, { required: needsSceneBackdrop, roots: nodeIds.length })
+  const renderGraph = needsSceneBackdrop ? graph : extracted.graph
   const renderPageId = renderGraph === graph ? pageId : extracted.pageId
   if (renderGraph !== graph) {
     prepareSelectionRenderGraph(graph, renderGraph, renderPageId, nodeIds)

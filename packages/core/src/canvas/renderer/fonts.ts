@@ -9,6 +9,7 @@ import {
   SECTION_TITLE_FONT_SIZE,
   SIZE_FONT_SIZE
 } from '#core/constants'
+import { finishExportProfile, startExportProfile } from '#core/io/export-profile'
 import { fontManager } from '#core/text/fonts'
 import { collectGraphFontRequirements } from '#core/text/requirements'
 import { missingGraphFontScripts } from '#core/text/resolved-requirements'
@@ -118,17 +119,28 @@ export async function prepareForExport(
   const previousTextMeasurer = getTextMeasurer()
   setTextMeasurer((node, maxWidth) => r.measureTextNode(node, maxWidth))
 
+  const fontScanSpan = startExportProfile('font_scan', { nodes: nodeIds.length })
   const fontKeys = fontManager.collectFontKeys(graph, nodeIds)
   const requirements = collectGraphFontRequirements(graph, nodeIds)
+  const missingScripts = missingGraphFontScripts(requirements)
+  finishExportProfile(fontScanSpan, {
+    characters: requirements.characters.length,
+    fonts: fontKeys.length,
+    nodes: nodeIds.length,
+    scripts: missingScripts.length
+  })
+
+  const fontLoadSpan = startExportProfile('font_load', { stage: 'document' })
   await Promise.all(
     fontKeys.map(([family, style]) => fontManager.loadFont(family, style, requirements.characters))
   )
-  await fontManager.ensureFallbackPack(
-    missingGraphFontScripts(requirements),
-    requirements.characters
-  )
+  await fontManager.ensureFallbackPack(missingScripts, requirements.characters)
+  finishExportProfile(fontLoadSpan, { fonts: fontKeys.length, stage: 'document' })
+
   syncFontGeneration(r)
+  const layoutSpan = startExportProfile('layout', { stage: 'export_prepare' })
   computeAllLayouts(graph, pageId)
+  finishExportProfile(layoutSpan, { nodes: graph.nodes.size, stage: 'export_prepare' })
 
   return () => setTextMeasurer(previousTextMeasurer)
 }

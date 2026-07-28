@@ -1,6 +1,13 @@
 export { IORegistry } from './registry'
 export { extractExportGraph } from './subgraph'
 export {
+  finishExportProfile,
+  startExportProfile,
+  type ExportProfileField,
+  type ExportProfileFields,
+  type ExportProfileSpan
+} from './export-profile'
+export {
   BUILTIN_IO_FORMATS,
   figFormat,
   penFormat,
