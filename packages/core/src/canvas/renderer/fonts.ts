@@ -10,6 +10,7 @@ import {
   SIZE_FONT_SIZE
 } from '#core/constants'
 import { finishExportProfile, startExportProfile } from '#core/io/export-profile'
+import type { TextMeasurer } from '#core/layout/text-measurement'
 import { fontManager } from '#core/text/fonts'
 import { collectGraphFontRequirements } from '#core/text/requirements'
 import { missingGraphFontScripts } from '#core/text/resolved-requirements'
@@ -29,6 +30,54 @@ export function trackFontDemand(r: SkiaRenderer, node: SceneNode, key: string): 
 interface TextPictureGenerationState {
   fontGeneration: number
   textPictureGenerations: Map<string, { data: Uint8Array; generation: number }>
+}
+
+export interface ExportTextMeasurementStats {
+  text_measure_calls: number
+  text_measure_cache_hits: number
+  text_measure_cache_misses: number
+}
+
+export interface ExportTextMeasurementCache {
+  clear: () => void
+  measure: TextMeasurer
+  stats: () => ExportTextMeasurementStats
+}
+
+function textMeasurementCacheKey(nodeId: string, maxWidth?: number): string {
+  const widthKey = maxWidth === undefined ? 'unconstrained' : Math.round(maxWidth)
+  return `${nodeId}:${widthKey}`
+}
+
+export function createExportTextMeasurementCache(
+  measureText: TextMeasurer
+): ExportTextMeasurementCache {
+  const measurements = new Map<string, ReturnType<TextMeasurer>>()
+  let calls = 0
+  let hits = 0
+  let misses = 0
+
+  return {
+    clear: () => measurements.clear(),
+    measure: (node, maxWidth) => {
+      calls += 1
+      const key = textMeasurementCacheKey(node.id, maxWidth)
+      if (measurements.has(key)) {
+        hits += 1
+        return measurements.get(key) ?? null
+      }
+
+      misses += 1
+      const result = measureText(node, maxWidth)
+      measurements.set(key, result)
+      return result
+    },
+    stats: () => ({
+      text_measure_calls: calls,
+      text_measure_cache_hits: hits,
+      text_measure_cache_misses: misses
+    })
+  }
 }
 
 export function isTextPictureCurrent(r: TextPictureGenerationState, node: SceneNode): boolean {
@@ -117,7 +166,10 @@ export async function prepareForExport(
   const { getTextMeasurer, setTextMeasurer, computeAllLayouts } = await import('#core/layout')
 
   const previousTextMeasurer = getTextMeasurer()
-  setTextMeasurer((node, maxWidth) => r.measureTextNode(node, maxWidth))
+  const textMeasurementCache = createExportTextMeasurementCache((node, maxWidth) =>
+    r.measureTextNode(node, maxWidth)
+  )
+  setTextMeasurer(textMeasurementCache.measure)
 
   const fontScanSpan = startExportProfile('font_scan', { nodes: nodeIds.length })
   const fontKeys = fontManager.collectFontKeys(graph, nodeIds)
@@ -140,7 +192,15 @@ export async function prepareForExport(
   syncFontGeneration(r)
   const layoutSpan = startExportProfile('layout', { stage: 'export_prepare' })
   computeAllLayouts(graph, pageId)
-  finishExportProfile(layoutSpan, { nodes: graph.nodes.size, stage: 'export_prepare' })
+  finishExportProfile(layoutSpan, {
+    nodes: graph.nodes.size,
+    stage: 'export_prepare',
+    ...textMeasurementCache.stats()
+  })
+  textMeasurementCache.clear()
 
-  return () => setTextMeasurer(previousTextMeasurer)
+  return () => {
+    textMeasurementCache.clear()
+    setTextMeasurer(previousTextMeasurer)
+  }
 }

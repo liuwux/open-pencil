@@ -4,6 +4,7 @@
 
 ### Fixed
 
+- Reuse text measurements across repeated Auto Layout work during headless export preparation.
 - Export SVGs with large embedded image fills without overflowing the JavaScript call stack.
 - Resolve headless CanvasKit assets correctly when OpenPencil is installed under a Unicode path.
 - Match regional browser languages to supported locales without selecting a secondary language. (#417)
