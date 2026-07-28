@@ -28,6 +28,50 @@ export function populateWholeDocument(graph: SceneGraph): boolean {
   return changed
 }
 
+function findNodePageId(graph: SceneGraph, nodeId: string): string | null {
+  let node = graph.getNode(nodeId)
+  while (node) {
+    if (node.type === 'CANVAS') return node.id
+    node = node.parentId ? graph.getNode(node.parentId) : undefined
+  }
+  return null
+}
+
+export function populateDocumentNodes(
+  graph: SceneGraph,
+  nodeIds: string[],
+  pageName?: string
+): Map<string, string[]> {
+  const requestedPage = pageName
+    ? graph.getPages(true).find((page) => page.name === pageName)
+    : undefined
+  if (pageName && !requestedPage) throw new Error(`Page "${pageName}" not found`)
+  if (requestedPage) populateDocumentPage(graph, requestedPage.id)
+
+  if (nodeIds.some((nodeId) => !graph.getNode(nodeId))) {
+    if (requestedPage) {
+      const missing = nodeIds.filter((nodeId) => !graph.getNode(nodeId))
+      throw new Error(`Nodes not found on page "${pageName}": ${missing.join(', ')}`)
+    }
+    populateWholeDocument(graph)
+  }
+
+  const byPage = new Map<string, string[]>()
+  for (const nodeId of nodeIds) {
+    const pageId = findNodePageId(graph, nodeId)
+    if (!pageId) throw new Error(`Node not found: ${nodeId}`)
+    if (requestedPage && pageId !== requestedPage.id) {
+      throw new Error(`Node ${nodeId} is not on page "${pageName}"`)
+    }
+    const pageNodeIds = byPage.get(pageId) ?? []
+    pageNodeIds.push(nodeId)
+    byPage.set(pageId, pageNodeIds)
+  }
+
+  for (const pageId of byPage.keys()) populateDocumentPage(graph, pageId)
+  return byPage
+}
+
 function pageNameFromArgs(args: unknown): string | undefined {
   if (!args || typeof args !== 'object' || Array.isArray(args)) return undefined
   const page = (args as { page?: unknown }).page

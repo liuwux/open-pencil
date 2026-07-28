@@ -6,7 +6,7 @@ import { join } from 'node:path'
 import { BUILTIN_IO_FORMATS, IORegistry } from '@open-pencil/core/io'
 import { SceneGraph } from '@open-pencil/scene-graph'
 
-import { loadDocument, prepareDocumentForRpc } from '#cli/headless'
+import { loadDocument, populateDocumentNodes, prepareDocumentForRpc } from '#cli/headless'
 
 const io = new IORegistry(BUILTIN_IO_FORMATS)
 
@@ -82,5 +82,16 @@ describe('headless CLI lazy .fig preparation', () => {
     prepareDocumentForRpc(graph, 'pages')
 
     expect(page2Instance ? graph.getChildren(page2Instance.id) : []).toHaveLength(0)
+  })
+
+  test('populates only the pages containing requested export nodes', async () => {
+    const graph = await createLazyFixture()
+    const page2Instance = pageInstance(graph, 'Page 2')
+    if (!page2Instance) throw new Error('Missing Page 2 instance fixture')
+
+    const groups = populateDocumentNodes(graph, [page2Instance.id])
+
+    expect([...groups.values()]).toEqual([[page2Instance.id]])
+    expect(graph.getChildren(page2Instance.id)).toHaveLength(1)
   })
 })

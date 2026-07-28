@@ -3,7 +3,7 @@ import { basename, dirname, extname, join, resolve } from 'node:path'
 
 import { defineCommand } from 'citty'
 
-import { BUILTIN_IO_FORMATS, IORegistry } from '@open-pencil/core/io'
+import { BUILTIN_IO_FORMATS, headlessRenderNodeBatches, IORegistry } from '@open-pencil/core/io'
 import type { RasterExportFormat } from '@open-pencil/core/io'
 import {
   exportHTMLBundle,
@@ -14,7 +14,12 @@ import {
 import { isAppMode, requireFile, rpc } from '#cli/app-client'
 import { appTargetOptions, appTargetRpcArgs } from '#cli/app-target'
 import { ok, printError } from '#cli/format'
-import { loadDocument, populateDocumentPage, populateWholeDocument } from '#cli/headless'
+import {
+  loadDocument,
+  populateDocumentNodes,
+  populateDocumentPage,
+  populateWholeDocument
+} from '#cli/headless'
 
 const io = new IORegistry(BUILTIN_IO_FORMATS)
 const RASTER_FORMATS = ['PNG', 'JPG', 'WEBP']
@@ -33,6 +38,8 @@ interface ExportArgs {
   quality?: string
   page?: string
   node?: string
+  nodes?: string
+  'output-dir'?: string
   style: string
   html: string
   css: string
@@ -160,9 +167,84 @@ function prepareGraphForExport(
   args: ExportArgs
 ): boolean {
   const wholeDocument = format === 'FIG' && !args.page && !args.node
-  if (wholeDocument || args.node) populateWholeDocument(graph)
+  if (wholeDocument) populateWholeDocument(graph)
+  else if (args.node) populateDocumentNodes(graph, [args.node], args.page)
   else populateDocumentPage(graph, pageId)
   return wholeDocument
+}
+
+function parseBatchNodeIds(value: string): string[] {
+  return [
+    ...new Set(
+      value
+        .split(',')
+        .map((nodeId) => nodeId.trim())
+        .filter(Boolean)
+    )
+  ]
+}
+
+function nodeExportFileName(nodeId: string, extension: string): string {
+  return `${nodeId.replaceAll(':', '-')}.${extension}`
+}
+
+async function exportRasterNodeBatch(
+  format: RasterExportFormat,
+  args: ExportArgs,
+  graph: Awaited<ReturnType<typeof loadDocument>>,
+  defaultName: string
+): Promise<void> {
+  const nodeIds = parseBatchNodeIds(args.nodes ?? '')
+  if (nodeIds.length === 0) throw new Error('--nodes must contain at least one node ID')
+
+  const nodesByPage = populateDocumentNodes(graph, nodeIds, args.page)
+  const outputDir = resolve(args['output-dir'] ?? `${defaultName}-nodes`)
+  await mkdir(outputDir, { recursive: true })
+  const extension = format === 'JPG' ? 'jpg' : format.toLowerCase()
+
+  for (const [pageId, pageNodeIds] of nodesByPage) {
+    const results = await headlessRenderNodeBatches(
+      graph,
+      pageId,
+      pageNodeIds.map((nodeId) => ({
+        nodeIds: [nodeId],
+        options: {
+          format,
+          scale: Number(args.scale),
+          quality: args.quality ? Number(args.quality) : undefined
+        }
+      }))
+    )
+    for (const [index, result] of results.entries()) {
+      if (!result) throw new Error(`Nothing to export for node ${pageNodeIds[index]}`)
+      await writeAndLog(join(outputDir, nodeExportFileName(pageNodeIds[index], extension)), result)
+    }
+  }
+
+  console.log(ok(`Parsed once; exported ${nodeIds.length} nodes to ${outputDir}`))
+}
+
+async function tryExportRasterNodeBatch(
+  format: string,
+  args: ExportArgs,
+  graph: Awaited<ReturnType<typeof loadDocument>>,
+  defaultName: string
+): Promise<boolean> {
+  if (!args.nodes) return false
+  if (args.node) {
+    printError('--node and --nodes cannot be used together.')
+    process.exit(1)
+  }
+  if (args.output) {
+    printError('Use --output-dir instead of --output with --nodes.')
+    process.exit(1)
+  }
+  if (format !== 'PNG' && format !== 'JPG' && format !== 'WEBP') {
+    printError('--nodes currently supports png, jpg, and webp exports only.')
+    process.exit(1)
+  }
+  await exportRasterNodeBatch(format, args, graph, defaultName)
+  return true
 }
 
 async function executeFileExport(
@@ -181,6 +263,8 @@ async function executeFileExport(
 async function exportFromFile(format: string, args: ExportArgs) {
   const file = requireFile(args.file)
   const graph = await loadDocument(file)
+  const defaultName = basename(file, extname(file))
+  if (await tryExportRasterNodeBatch(format, args, graph, defaultName)) return
 
   const pages = graph.getPages()
   const page = args.page ? pages.find((p) => p.name === args.page) : pages[0]
@@ -191,13 +275,6 @@ async function exportFromFile(format: string, args: ExportArgs) {
         ? `Page "${args.page}" not found. Available pages: ${available || 'none'}.`
         : 'Document has no pages.'
     )
-    process.exit(1)
-  }
-
-  const defaultName = basename(file, extname(file))
-
-  if (args.page && args.node) {
-    printError('--page and --node cannot be used together.')
     process.exit(1)
   }
 
@@ -280,7 +357,17 @@ export default defineCommand({
     },
     node: {
       type: 'string',
-      description: 'Export a specific node by ID (cannot be combined with --page)',
+      description: 'Export a specific node by ID (--page may be used as a lazy-loading hint)',
+      required: false
+    },
+    nodes: {
+      type: 'string',
+      description: 'Export comma-separated node IDs in one parse/render session (raster only)',
+      required: false
+    },
+    'output-dir': {
+      type: 'string',
+      description: 'Output directory for --nodes batch exports',
       required: false
     },
     style: {

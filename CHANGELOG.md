@@ -5,12 +5,14 @@
 ### Fixed
 
 - Export SVGs with large embedded image fills without overflowing the JavaScript call stack.
+- Resolve headless CanvasKit assets correctly when OpenPencil is installed under a Unicode path.
 - Save auto-layout frames that stretch their children to `.fig` without failing. (#427)
 - Reduce large `.fig` page-switch work to the active page and coalesce Layers tree rebuilds. (#420)
 - Center text glyphs within explicit line-height leading in CanvasKit paragraph rendering.
 
 ### Added
 
+- Export multiple raster nodes in one CLI parse and render-preparation session with `export --nodes`.
 - Figma-style Assets panel browsing with component thumbnails, grid/list views, page grouping, context actions, and drag-to-canvas insertion.
 - Import HTML, CSS, Tailwind, and JSX as editable documents from the app, CLI, and SDK, and export standalone browser-ready HTML with compiled CSS and optional external assets.
 - Author richer Design JSX with components, instances, variables, gradients, structured fills, shadows, and blur effects.

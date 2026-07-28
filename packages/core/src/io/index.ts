@@ -18,8 +18,10 @@ export {
   renderNodesToImage,
   renderThumbnail,
   initCanvasKit,
+  headlessRenderNodeBatches,
   headlessRenderNodes,
   headlessRenderThumbnail,
+  type HeadlessRenderBatch,
   type RasterExportFormat,
   type ExportFormat
 } from './formats/raster'

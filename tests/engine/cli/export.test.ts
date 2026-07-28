@@ -30,6 +30,13 @@ async function createFigFixture() {
   rect.paddingTop = 16
   rect.paddingBottom = 16
   rect.fills = [{ type: 'SOLID', color: { r: 1, g: 1, b: 1, a: 1 } }]
+  const secondRect = createRect(graph, firstPageId(graph), {
+    name: 'Export Badge',
+    x: 180,
+    y: 0,
+    width: 40,
+    height: 40
+  })
 
   const secondPage = graph.addPage('Second Page')
   createRect(graph, secondPage.id, {
@@ -42,8 +49,33 @@ async function createFigFixture() {
 
   const result = await io.writeDocument('fig', graph)
   await Bun.write(figPath, result.data as Uint8Array)
-  return { dir, figPath }
+  return { dir, figPath, nodeIds: [rect.id, secondRect.id] }
 }
+
+test('raster batch export parses once and writes each requested node', async () => {
+  const { dir, figPath, nodeIds } = await createFigFixture()
+  const outputDir = join(dir, 'nodes')
+
+  const { stdout, stderr, exitCode } = await runOpenPencilCLI([
+    'export',
+    figPath,
+    '--format',
+    'png',
+    '--nodes',
+    nodeIds.join(','),
+    '--output-dir',
+    outputDir
+  ])
+
+  expect(stderr).toBe('')
+  expect(exitCode).toBe(0)
+  expect(stdout).toContain('Parsed once; exported 2 nodes')
+  for (const nodeId of nodeIds) {
+    const output = Bun.file(join(outputDir, `${nodeId.replaceAll(':', '-')}.png`))
+    expect(await output.exists()).toBe(true)
+    expect(output.size).toBeGreaterThan(0)
+  }
+})
 
 test('FIG export preserves the whole document by default', async () => {
   const { dir, figPath } = await createFigFixture()

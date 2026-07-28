@@ -11,6 +11,16 @@ import { renderNodesToImage, renderThumbnail, type ExportFormat } from './render
 let cachedCk: CanvasKit | null = null
 let cachedRenderer: SkiaRenderer | null = null
 
+export interface HeadlessRenderBatch {
+  nodeIds: string[]
+  options?: {
+    scale?: number
+    format?: ExportFormat
+    quality?: number
+    trimTransparent?: boolean
+  }
+}
+
 export async function initCanvasKit(): Promise<CanvasKit> {
   if (cachedCk) return cachedCk
   const CanvasKitInit = (await import('canvaskit-wasm/full')).default
@@ -45,16 +55,29 @@ export async function headlessRenderNodes(
     trimTransparent?: boolean
   } = {}
 ): Promise<Uint8Array | null> {
+  const [result] = await headlessRenderNodeBatches(graph, pageId, [{ nodeIds, options }])
+  return result ?? null
+}
+
+export async function headlessRenderNodeBatches(
+  graph: SceneGraph,
+  pageId: string,
+  batches: HeadlessRenderBatch[]
+): Promise<(Uint8Array | null)[]> {
+  if (batches.length === 0) return []
   const { ck, renderer } = await getRenderer()
   renderer.invalidateAllPictures()
+  const nodeIds = [...new Set(batches.flatMap((batch) => batch.nodeIds))]
   const restoreTextMeasurer = await renderer.prepareForExport(graph, pageId, nodeIds)
   try {
-    return renderNodesToImage(ck, renderer, graph, pageId, nodeIds, {
-      scale: options.scale ?? 1,
-      format: options.format ?? 'PNG',
-      quality: options.quality,
-      trimTransparent: options.trimTransparent
-    })
+    return batches.map((batch) =>
+      renderNodesToImage(ck, renderer, graph, pageId, batch.nodeIds, {
+        scale: batch.options?.scale ?? 1,
+        format: batch.options?.format ?? 'PNG',
+        quality: batch.options?.quality,
+        trimTransparent: batch.options?.trimTransparent
+      })
+    )
   } finally {
     restoreTextMeasurer()
   }
